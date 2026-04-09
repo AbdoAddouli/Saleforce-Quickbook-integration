@@ -87,8 +87,50 @@ public with sharing class QuickBookTokenUtil {
         
     }
 
-}/*authurl = https://appcenter.intuit.com/connect/oauth2?
-    client_id=Q3ylJatCvnkYqVKLmkxxxxxxxxxxxxxxxkYB36b5mws7HkKUEv9aI&response_type=code&
-    scope=com.intuit.quickbooks.accounting&
-    redirect_uri=https://www.mydemoapp.com/oauth-redirect&
-    state=security_token%3D138r5719ru3e1%26url%3Dhttps://www.mydemoapp.com/oauth-redirect */
+    public static Boolean isValid(quickBook__mdt config){
+        Boolean isValid  =true;
+        if(config.expires_in_time__c == System.now() ){
+            isValid = false;
+        }
+        return isValid;
+    }
+
+    public static Map<String, Object> refreshToken(){
+        String tokenUrl = config.token_url__c;
+        String requestBody = 'grant_type=refresh_token&refresh_token=' + config.refresh_token__c + 
+                            '&client_id=' + config.Client_Id__c + '&client_secret=' + config.Client_Secret__c;
+        System.debug('Refresh Token Request Body: ' + requestBody);
+        HttpRequest httpReq = PS_CalloutUtils.prepareRequest(tokenUrl,'POST',requestBody,'application/json', 'application/x-www-form-urlencoded');
+        Map<String, Object> fieldWithValuesMap = new Map<String, Object>();
+        try{
+            HttpResponse httpRes = (new Http()).send(httpReq);
+            if(httpRes.getStatusCode() == 200 || httpRes.getStatusCode() == 201 ){
+                fieldWithValuesMap = prepareMetadata(httpRes.getBody(),'');
+            }else{
+                System.debug('Failed to refresh token. Status code: ' + httpRes.getStatusCode() + ', Response body: ' + httpRes.getBody());
+            }    
+        }catch(System.CalloutException ex){
+
+        }catch(System.Exception ex){
+
+        }
+        return fieldWithValuesMap;
+    }
+
+    public static Map<String, Object> prepareMetadata(String requestBody, String realmId){
+        Map<String, Object> responseMap = (Map<String, Object>)JSON.deserializeUntyped(requestBody);
+        String access_token  = (String)responseMap.get('access_token');
+        String refresh_token = (String)responseMap.get('refresh_token');
+        Integer expires_in   = (Integer)responseMap.get('expires_in');
+
+        Map<String, Object> fieldWithValuesMap = new Map<String, Object>();
+        fieldWithValuesMap.put('access_token__c', access_token);
+        fieldWithValuesMap.put('expires_in__c',expires_in);
+        fieldWithValuesMap.put('expires_in_time__c', System.now().addSeconds(expires_in) );
+        fieldWithValuesMap.put('refresh_token__c', refresh_token);
+        if(!String.isBlank(realmId)){
+            fieldWithValuesMap.put('realmId__c', realmId);
+        }
+        return responseMap;
+    }
+}
